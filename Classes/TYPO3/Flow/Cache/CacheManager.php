@@ -13,6 +13,7 @@ namespace TYPO3\Flow\Cache;
 
 use TYPO3\Flow\Annotations as Flow;
 use TYPO3\Flow\Cache\Frontend\FrontendInterface;
+use TYPO3\Flow\Utility\PhpAnalyzer;
 
 /**
  * The Cache Manager
@@ -45,11 +46,17 @@ class CacheManager {
 	/**
 	 * @var array
 	 */
+	protected $persistentCaches = array();
+
+	/**
+	 * @var array
+	 */
 	protected $cacheConfigurations = array(
 		'Default' => array(
 			'frontend' => 'TYPO3\Flow\Cache\Frontend\VariableFrontend',
 			'backend' => 'TYPO3\Flow\Cache\Backend\FileBackend',
-			'backendOptions' => array()
+			'backendOptions' => array(),
+			'persistent' => FALSE
 		)
 	);
 
@@ -85,6 +92,7 @@ class CacheManager {
 	 *   frontend
 	 *   backend
 	 *   backendOptions
+	 *   persistent
 	 *
 	 * If one of the options is not specified, the default value is assumed.
 	 * Existing cache configurations are preserved.
@@ -110,12 +118,15 @@ class CacheManager {
 	 * @throws \TYPO3\Flow\Cache\Exception\DuplicateIdentifierException if a cache with the given identifier has already been registered.
 	 * @api
 	 */
-	public function registerCache(\TYPO3\Flow\Cache\Frontend\FrontendInterface $cache) {
+	public function registerCache(\TYPO3\Flow\Cache\Frontend\FrontendInterface $cache, $persistent = FALSE) {
 		$identifier = $cache->getIdentifier();
 		if (isset($this->caches[$identifier])) {
 			throw new \TYPO3\Flow\Cache\Exception\DuplicateIdentifierException('A cache with identifier "' . $identifier . '" has already been registered.', 1203698223);
 		}
 		$this->caches[$identifier] = $cache;
+		if ($persistent === TRUE) {
+			$this->persistentCaches[$identifier] = $cache;
+		}
 	}
 
 	/**
@@ -149,14 +160,29 @@ class CacheManager {
 	}
 
 	/**
+	 * Checks if the specified cache is marked as "persistent".
+	 *
+	 * @param string $identifier The identifier of the cache
+	 * @return boolean TRUE if the specified cache is persistent, FALSE if it is not, or if the cache does not exist
+	 */
+	public function isCachePersistent($identifier) {
+		return isset($this->persistentCaches[$identifier]);
+	}
+
+	/**
 	 * Flushes all registered caches
 	 *
+	 * @param boolean $flushPersistentCaches If set to TRUE, even those caches which are flagged as "persistent" will be flushed
 	 * @return void
 	 * @api
 	 */
-	public function flushCaches() {
+	public function flushCaches($flushPersistentCaches = FALSE) {
 		$this->createAllCaches();
-		foreach ($this->caches as $cache) {
+		/** @var FrontendInterface $cache */
+		foreach ($this->caches as $identifier => $cache) {
+			if (!$flushPersistentCaches && $this->isCachePersistent($identifier)) {
+				continue;
+			}
 			$cache->flush();
 		}
 		$this->configurationManager->flushConfigurationCache();
@@ -167,12 +193,17 @@ class CacheManager {
 	 * caches.
 	 *
 	 * @param string $tag Tag to search for
+	 * @param boolean $flushPersistentCaches If set to TRUE, even those caches which are flagged as "persistent" will be flushed
 	 * @return void
 	 * @api
 	 */
-	public function flushCachesByTag($tag) {
+	public function flushCachesByTag($tag, $flushPersistentCaches = FALSE) {
 		$this->createAllCaches();
-		foreach ($this->caches as $cache) {
+		/** @var FrontendInterface $cache */
+		foreach ($this->caches as $identifier => $cache) {
+			if (!$flushPersistentCaches && $this->isCachePersistent($identifier)) {
+				continue;
+			}
 			$cache->flushByTag($tag);
 		}
 	}
@@ -228,26 +259,24 @@ class CacheManager {
 		$modifiedAspectClassNamesWithUnderscores = array();
 		$modifiedClassNamesWithUnderscores = array();
 		foreach ($changedFiles as $pathAndFilename => $status) {
-			$pathAndFilename = str_replace(FLOW_PATH_PACKAGES, '', $pathAndFilename);
-			$matches = array();
-			// safeguard against projects having illegal filenames below "Classes" (like phpexcel/phpexcel, see https://phpexcel.codeplex.com/workitem/20336)
-			if (preg_match('/[^\/]+\/(.+)\/(Classes|Tests)\/([^.]+)\.php/', $pathAndFilename, $matches) === 1) {
-				if ($matches[2] === 'Classes') {
-					$classNameWithUnderscores = str_replace('/', '_', $matches[3]);
-				} else {
-					$classNameWithUnderscores = str_replace('/', '_', $matches[1] . '_' . ($matches[2] === 'Tests' ? 'Tests_' : '') . $matches[3]);
-					$classNameWithUnderscores = str_replace('.', '_', $classNameWithUnderscores);
-				}
-				$modifiedClassNamesWithUnderscores[$classNameWithUnderscores] = TRUE;
+			if (!file_exists($pathAndFilename)) {
+				continue;
+			}
+			$fileContents = file_get_contents($pathAndFilename);
+			$className = (new PhpAnalyzer($fileContents))->extractFullyQualifiedClassName();
+			if ($className === NULL) {
+				continue;
+			}
+			$classNameWithUnderscores = str_replace('\\', '_', $className);
+			$modifiedClassNamesWithUnderscores[$classNameWithUnderscores] = TRUE;
 
-				// If an aspect was modified, the whole code cache needs to be flushed, so keep track of them:
-				if (substr($classNameWithUnderscores, -6, 6) === 'Aspect') {
-					$modifiedAspectClassNamesWithUnderscores[$classNameWithUnderscores] = TRUE;
-				}
-				// As long as no modified aspect was found, we are optimistic that only part of the cache needs to be flushed:
-				if (count($modifiedAspectClassNamesWithUnderscores) === 0) {
-					$objectClassesCache->remove($classNameWithUnderscores);
-				}
+			// If an aspect was modified, the whole code cache needs to be flushed, so keep track of them:
+			if (substr($classNameWithUnderscores, -6, 6) === 'Aspect') {
+				$modifiedAspectClassNamesWithUnderscores[$classNameWithUnderscores] = TRUE;
+			}
+			// As long as no modified aspect was found, we are optimistic that only part of the cache needs to be flushed:
+			if (count($modifiedAspectClassNamesWithUnderscores) === 0) {
+				$objectClassesCache->remove($classNameWithUnderscores);
 			}
 		}
 		$flushDoctrineProxyCache = FALSE;
@@ -273,23 +302,29 @@ class CacheManager {
 	}
 
 	/**
-	 * Flushes policy/routing caches if routes or policies have changed
+	 * Flushes caches as needed if settings, routes or policies have changed
 	 *
 	 * @param array $changedFiles A list of full paths to changed files
 	 * @return void
 	 * @see flushSystemCachesByChangedFiles()
 	 */
 	protected function flushConfigurationCachesByChangedFiles(array $changedFiles) {
+		$aopProxyClassRebuildIsNeeded = FALSE;
+		$aopProxyClassInfluencers = '/(?:Policy|Objects|Settings)(?:\..*)*\.yaml/';
+
 		$objectClassesCache = $this->getCache('Flow_Object_Classes');
 		$objectConfigurationCache = $this->getCache('Flow_Object_Configuration');
 		$caches = array(
-			'/Policy\.yaml/' => array('Flow_Security_Authorization_Privilege_Method', 'Flow_Persistence_Doctrine', 'Flow_Persistence_Doctrine_Results'),
+			'/Policy\.yaml/' => array('Flow_Security_Authorization_Privilege_Method', 'Flow_Persistence_Doctrine', 'Flow_Persistence_Doctrine_Results', 'Flow_Aop_RuntimeExpressions'),
 			'/Routes([^\/]*)\.yaml/' => array('Flow_Mvc_Routing_Route', 'Flow_Mvc_Routing_Resolve'),
-			'/Views\.yaml/' => array('Flow_Mvc_ViewConfigurations'),
+			'/Views\.yaml/' => array('Flow_Mvc_ViewConfigurations')
 		);
 		$cachesToFlush = array();
 		foreach (array_keys($changedFiles) as $pathAndFilename) {
 			foreach ($caches as $cacheFilePattern => $cacheNames) {
+				if (preg_match($aopProxyClassInfluencers, $pathAndFilename) === 1) {
+					$aopProxyClassRebuildIsNeeded = TRUE;
+				}
 				if (preg_match($cacheFilePattern, $pathAndFilename) !== 1) {
 					continue;
 				}
@@ -304,10 +339,15 @@ class CacheManager {
 			$this->getCache($cacheName)->flush();
 		}
 
-		$this->systemLogger->log('The configuration has changed, triggering an AOP proxy class rebuild.', LOG_INFO);
-		$objectConfigurationCache->remove('allAspectClassesUpToDate');
-		$objectConfigurationCache->remove('allCompiledCodeUpToDate');
-		$objectClassesCache->flush();
+		$this->systemLogger->log('A configuration file has been changed, flushing compiled configuration cache', LOG_INFO);
+		$this->configurationManager->flushConfigurationCache();
+
+		if($aopProxyClassRebuildIsNeeded) {
+			$this->systemLogger->log('The configuration has changed, triggering an AOP proxy class rebuild.', LOG_INFO);
+			$objectConfigurationCache->remove('allAspectClassesUpToDate');
+			$objectConfigurationCache->remove('allCompiledCodeUpToDate');
+			$objectClassesCache->flush();
+		}
 	}
 
 	/**
@@ -366,6 +406,7 @@ class CacheManager {
 		$frontend = isset($this->cacheConfigurations[$identifier]['frontend']) ? $this->cacheConfigurations[$identifier]['frontend'] : $this->cacheConfigurations['Default']['frontend'];
 		$backend = isset($this->cacheConfigurations[$identifier]['backend']) ? $this->cacheConfigurations[$identifier]['backend'] : $this->cacheConfigurations['Default']['backend'];
 		$backendOptions = isset($this->cacheConfigurations[$identifier]['backendOptions']) ? $this->cacheConfigurations[$identifier]['backendOptions'] : $this->cacheConfigurations['Default']['backendOptions'];
-		$this->cacheFactory->create($identifier, $frontend, $backend, $backendOptions);
+		$persistent = isset($this->cacheConfigurations[$identifier]['persistent']) ? $this->cacheConfigurations[$identifier]['persistent'] : $this->cacheConfigurations['Default']['persistent'];
+		$this->cacheFactory->create($identifier, $frontend, $backend, $backendOptions, $persistent);
 	}
 }

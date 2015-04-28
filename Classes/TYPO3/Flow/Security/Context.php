@@ -70,6 +70,12 @@ class Context {
 	const CSRF_ONE_PER_REQUEST = 3;
 
 	/**
+	 * If the security context isn't initialized (or authorization checks are disabled)
+	 * this constant will be returned by getContextHash()
+	 */
+	const CONTEXT_HASH_UNINITIALIZED = '__uninitialized__';
+
+	/**
 	 * TRUE if the context is initialized in the current request, FALSE or NULL otherwise.
 	 *
 	 * @var boolean
@@ -131,20 +137,20 @@ class Context {
 	protected $sessionManager;
 
 	/**
-	 * @var SecurityLoggerInterface
 	 * @Flow\Inject
+	 * @var SecurityLoggerInterface
 	 */
 	protected $securityLogger;
 
 	/**
-	 * @var Policy\PolicyService
 	 * @Flow\Inject
+	 * @var Policy\PolicyService
 	 */
 	protected $policyService;
 
 	/**
-	 * @var Cryptography\HashService
 	 * @Flow\Inject
+	 * @var Cryptography\HashService
 	 */
 	protected $hashService;
 
@@ -172,20 +178,19 @@ class Context {
 
 	/**
 	 * Whether authorization is disabled @see areAuthorizationChecksDisabled()
+	 *
 	 * @Flow\Transient
 	 * @var boolean
 	 */
 	protected $authorizationChecksDisabled = FALSE;
 
 	/**
+	 * A hash for this security context that is unique to the currently authenticated roles. @see getContextHash()
+	 *
+	 * @Flow\Transient
 	 * @var string
 	 */
 	protected $contextHash = NULL;
-
-	/**
-	 * @var array of strings
-	 */
-	protected $contextHashComponents = array();
 
 	/**
 	 * Inject the authentication manager
@@ -212,6 +217,7 @@ class Context {
 	 * @throws \Exception
 	 */
 	public function withoutAuthorizationChecks(\Closure $callback) {
+		$authorizationChecksAreAlreadyDisabled = $this->authorizationChecksDisabled;
 		$this->authorizationChecksDisabled = TRUE;
 		try {
 			/** @noinspection PhpUndefinedMethodInspection */
@@ -220,7 +226,9 @@ class Context {
 			$this->authorizationChecksDisabled = FALSE;
 			throw $exception;
 		}
-		$this->authorizationChecksDisabled = FALSE;
+		if ($authorizationChecksAreAlreadyDisabled === FALSE) {
+			$this->authorizationChecksDisabled = FALSE;
+		}
 	}
 
 	/**
@@ -430,15 +438,6 @@ class Context {
 	}
 
 	/**
-	 * Generates a hash that is unique for the currently authenticated roles
-	 *
-	 * @return string
-	 */
-	public function getRolesHash() {
-		return md5(implode('|', array_keys($this->getRoles())));
-	}
-
-	/**
 	 * Returns TRUE, if at least one of the currently authenticated accounts holds
 	 * a role with the given identifier, also recursively.
 	 *
@@ -477,6 +476,7 @@ class Context {
 		/** @var $token \TYPO3\Flow\Security\Authentication\TokenInterface */
 		foreach ($this->getAuthenticationTokens() as $token) {
 			if ($token->isAuthenticated() === TRUE) {
+				/** @noinspection PhpDeprecationInspection */
 				return $token->getAccount() !== NULL ? $token->getAccount()->getParty() : NULL;
 			}
 		}
@@ -497,7 +497,9 @@ class Context {
 
 		/** @var $token \TYPO3\Flow\Security\Authentication\TokenInterface */
 		foreach ($this->getAuthenticationTokens() as $token) {
+			/** @noinspection PhpDeprecationInspection */
 			if ($token->isAuthenticated() === TRUE && $token->getAccount() instanceof Account && $token->getAccount()->getParty() instanceof $className) {
+				/** @noinspection PhpDeprecationInspection */
 				return $token->getAccount()->getParty();
 			}
 		}
@@ -627,12 +629,14 @@ class Context {
 	 */
 	public function clearContext() {
 		$this->roles = NULL;
+		$this->contextHash = NULL;
 		$this->tokens = array();
 		$this->activeTokens = array();
 		$this->inactiveTokens = array();
 		$this->request = NULL;
 		$this->csrfProtectionTokens = array();
 		$this->interceptedRequest = NULL;
+		$this->authorizationChecksDisabled = FALSE;
 		$this->initialized = FALSE;
 	}
 
@@ -734,6 +738,7 @@ class Context {
 		}
 
 		$this->roles = NULL;
+		$this->contextHash = NULL;
 	}
 
 	/**
@@ -781,36 +786,19 @@ class Context {
 	 * @return string
 	 */
 	public function getContextHash() {
-		if ($this->initialized === FALSE) {
+		if ($this->areAuthorizationChecksDisabled()) {
+			return self::CONTEXT_HASH_UNINITIALIZED;
+		}
+		if (!$this->isInitialized()) {
 			if (!$this->canBeInitialized()) {
-				return '__uninitialized__';
-			} else {
-				$this->initialize();
+				return self::CONTEXT_HASH_UNINITIALIZED;
 			}
-
+			$this->initialize();
 		}
 		if ($this->contextHash === NULL) {
-			$this->contextHash = md5(implode('|', $this->contextHashComponents));
+			$this->contextHash = md5(implode('|', array_keys($this->getRoles())));
 		}
 		return $this->contextHash;
 	}
 
-	/**
-	 * Register a value that affects the context hash. @see getContextHash()
-	 *
-	 * @param string $key a key that uniquely identifies the hash component
-	 * @param string $value
-	 * @return void
-	 */
-	public function setContextHashComponent($key, $value) {
-		$this->contextHash = NULL;
-		$this->contextHashComponents[$key] = $value;
-	}
-
-	/**
-	 * @return void
-	 */
-	public function updateContextHashComponents() {
-		$this->setContextHashComponent('TYPO3.Flow:Roles', $this->getRolesHash());
-	}
 }

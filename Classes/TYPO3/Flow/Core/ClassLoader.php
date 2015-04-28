@@ -161,12 +161,10 @@ class ClassLoader {
 		$namespaceParts = array_merge($namespaceParts, $classNameParts);
 		$namespacePartCount = count($namespaceParts);
 
-		// Load classes from the Flow package at a very early stage where
-		// no packages have been registered yet:
+		// Load classes from the Flow package at a very early stage where no packages have been registered yet:
 		if ($this->packageNamespaces === array()) {
 			if ($namespaceParts[0] === 'TYPO3' && $namespaceParts[1] === 'Flow') {
 				require(FLOW_PATH_FLOW . 'Classes/TYPO3/Flow/' . implode('/', array_slice($namespaceParts, 2)) . '.php');
-
 				return TRUE;
 			} else {
 				return FALSE;
@@ -175,40 +173,57 @@ class ClassLoader {
 
 		$currentPackageArray = $this->packageNamespaces;
 		$packagenamespacePartCount = 0;
-		if ($namespacePartCount === 1 && isset($currentPackageArray[$namespaceParts[0]])) {
-			$currentPackageArray = $currentPackageArray[$namespaceParts[0]];
-		} else {
+
+		// This will contain all possible class mappings for the given class name. We start with the fallback paths and prepend mappings with growing specificy.
+		$collectedPossibleNamespaceMappings = array(
+			array('p' => $this->fallbackClassPaths, 'c' => 0)
+		);
+
+		if ($namespacePartCount > 1) {
 			while (($packagenamespacePartCount + 1) < $namespacePartCount) {
 				$possiblePackageNamespacePart = $namespaceParts[$packagenamespacePartCount];
-
 				if (!isset($currentPackageArray[$possiblePackageNamespacePart])) {
 					break;
 				}
 
 				$packagenamespacePartCount++;
 				$currentPackageArray = $currentPackageArray[$possiblePackageNamespacePart];
+				if (isset($currentPackageArray['_pathData'])) {
+					array_unshift($collectedPossibleNamespaceMappings, array('p' => $currentPackageArray['_pathData'], 'c' => $packagenamespacePartCount));
+
+				}
 			}
 		}
 
-		if (isset($currentPackageArray['_pathData'])) {
-			$possiblePaths = $currentPackageArray['_pathData'];
-		} else {
-			$packagenamespacePartCount = 0;
-			$possiblePaths = $this->fallbackClassPaths;
+		foreach ($collectedPossibleNamespaceMappings as $nameSpaceMapping) {
+			if ($this->loadClassFromPossiblePaths($nameSpaceMapping['p'], $namespaceParts, $nameSpaceMapping['c'])) {
+				return TRUE;
+			}
 		}
 
+		$this->nonExistentClasses[$className] = TRUE;
+		return FALSE;
+	}
+
+	/**
+	 * Tries to load a class from a list of possible paths
+	 *
+	 * @param array $possiblePaths
+	 * @param array $namespaceParts
+	 * @param integer $packageNamespacePartCount
+	 * @return boolean
+	 */
+	protected function loadClassFromPossiblePaths(array $possiblePaths, array $namespaceParts, $packageNamespacePartCount) {
 		foreach ($possiblePaths as $possiblePathData) {
 			$pathConstructor = 'buildClassPathWith' . $possiblePathData['mappingType'];
-			$possibleFilePath = $this->$pathConstructor($namespaceParts, $possiblePathData['path'], $packagenamespacePartCount);
-			if (file_exists($possibleFilePath)) {
+			$possibleFilePath = $this->$pathConstructor($namespaceParts, $possiblePathData['path'], $packageNamespacePartCount);
+			if (is_file($possibleFilePath)) {
 				$result = include($possibleFilePath);
 				if ($result !== FALSE) {
 					return TRUE;
 				}
 			}
 		}
-
-		$this->nonExistentClasses[$className] = TRUE;
 
 		return FALSE;
 	}
@@ -353,14 +368,14 @@ class ClassLoader {
 	 * @return void
 	 */
 	protected function initializeAutoloadInformation($composerPath, ApplicationContext $context = NULL) {
-		if (file_exists($composerPath . 'autoload_classmap.php')) {
+		if (is_file($composerPath . 'autoload_classmap.php')) {
 			$classMap = include($composerPath . 'autoload_classmap.php');
 			if ($classMap !== FALSE) {
 				$this->classMap = $classMap;
 			}
 		}
 
-		if (file_exists($composerPath . 'autoload_namespaces.php')) {
+		if (is_file($composerPath . 'autoload_namespaces.php')) {
 			$namespaceMap = include($composerPath . 'autoload_namespaces.php');
 			if ($namespaceMap !== FALSE) {
 				foreach ($namespaceMap as $namespace => $paths) {
@@ -378,7 +393,7 @@ class ClassLoader {
 			}
 		}
 
-		if (file_exists($composerPath . 'autoload_psr4.php')) {
+		if (is_file($composerPath . 'autoload_psr4.php')) {
 			$psr4Map = include($composerPath . 'autoload_psr4.php');
 			if ($psr4Map !== FALSE) {
 				foreach ($psr4Map as $namespace => $possibleClassPaths) {
@@ -396,7 +411,7 @@ class ClassLoader {
 			}
 		}
 
-		if (file_exists($composerPath . 'include_paths.php')) {
+		if (is_file($composerPath . 'include_paths.php')) {
 			$includePaths = include($composerPath . 'include_paths.php');
 			if ($includePaths !== FALSE) {
 				array_push($includePaths, get_include_path());
@@ -404,7 +419,7 @@ class ClassLoader {
 			}
 		}
 
-		if (file_exists($composerPath . 'autoload_files.php')) {
+		if (is_file($composerPath . 'autoload_files.php')) {
 			$includeFiles = include($composerPath . 'autoload_files.php');
 			if ($includeFiles !== FALSE) {
 				foreach ($includeFiles as $file) {

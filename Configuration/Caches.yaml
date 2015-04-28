@@ -18,6 +18,7 @@ Default:
   backend: TYPO3\Flow\Cache\Backend\FileBackend
   backendOptions:
     defaultLifetime: 0
+  persistent: false
 
 ##
 # Definition of caches used by TYPO3 Flow:
@@ -111,9 +112,18 @@ Flow_Security_Authorization_Privilege_Method: []
 Flow_Security_Cryptography_RSAWallet:
   backendOptions:
     defaultLifetime: 30
+Flow_Security_Cryptography_HashService:
+  backend: TYPO3\Flow\Cache\Backend\SimpleFileBackend
+  persistent: true
+
 
 # Flow_Session_*
 Flow_Session_MetaData:
   backend: TYPO3\Flow\Cache\Backend\FileBackend
 Flow_Session_Storage:
   backend: TYPO3\Flow\Cache\Backend\FileBackend
+
+#  Aop filter expressions that need to be evaluated at runtime.
+Flow_Aop_RuntimeExpressions:
+  frontend: TYPO3\Flow\Cache\Frontend\PhpFrontend
+  backend: TYPO3\Flow\Cache\Backend\SimpleFileBackend

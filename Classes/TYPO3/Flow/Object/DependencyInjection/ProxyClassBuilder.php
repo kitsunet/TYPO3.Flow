@@ -446,8 +446,8 @@ class ProxyClassBuilder {
 					} else {
 						$preparedSetterArgument = $propertyValue;
 					}
-					$commands[] = '$this->' . $propertyName . ' = ' . $preparedSetterArgument . ';';
-				break;
+					$commands[] = 'if (\TYPO3\Flow\Reflection\ObjectAccess::setProperty($this, \'' . $propertyName . '\', ' . $preparedSetterArgument . ') === FALSE) { $this->' . $propertyName . ' = ' . $preparedSetterArgument . ';}';
+					break;
 				case ConfigurationProperty::PROPERTY_TYPES_CONFIGURATION:
 					$configurationType = $propertyValue['type'];
 					if (!in_array($configurationType, $this->configurationManager->getAvailableConfigurationTypes())) {
@@ -686,7 +686,7 @@ class ProxyClassBuilder {
 						if ($argumentValue instanceof Configuration) {
 							$argumentValueObjectName = $argumentValue->getObjectName();
 							if ($this->objectConfigurations[$argumentValueObjectName]->getScope() === Configuration::SCOPE_PROTOTYPE) {
-								$preparedArguments[] = '$this->getPrototype(\'' . $argumentValueObjectName . '\', array(' . $this->buildMethodParametersCode($argumentValue->getArguments(), $this->objectConfigurations) . '))';
+								$preparedArguments[] = 'new \\' . $argumentValueObjectName . '(' . $this->buildMethodParametersCode($argumentValue->getArguments(), $this->objectConfigurations) . ')';
 							} else {
 								$preparedArguments[] = '\TYPO3\Flow\Core\Bootstrap::$staticObjectManager->get(\'' . $argumentValueObjectName . '\')';
 							}

@@ -1,5 +1,5 @@
 <?php
-namespace TYPO3\Flow\Security\Authorization\Privilege\Entity\Doctrine;
+namespace TYPO3\Flow\Tests\Functional\Persistence\Fixtures;
 
 /*                                                                        *
  * This script belongs to the TYPO3 Flow framework.                       *
@@ -11,24 +11,36 @@ namespace TYPO3\Flow\Security\Authorization\Privilege\Entity\Doctrine;
  * The TYPO3 project - inspiring people to share!                         *
  *                                                                        */
 
-use Doctrine\Common\Persistence\Mapping\ClassMetadata;
-use Doctrine\ORM\Query\Filter\SQLFilter as DoctrineSqlFilter;
+use Doctrine\ORM\Mapping as ORM;
 use TYPO3\Flow\Annotations as Flow;
 
 /**
- * A sql generator to create a sql condition matching any entity.
+ * A simple entity for persistence tests of OneToOne relations.
+ *
+ * @Flow\Entity
+ * @ORM\Table(name="persistence_onetooneentity")
  */
-class AnyEntityConditionGenerator implements SqlGeneratorInterface {
+class OneToOneEntity {
 
 	/**
-	 * Returns an SQL query part that is basically a no-op in order to match any entity
-	 *
-	 * @param DoctrineSqlFilter $sqlFilter
-	 * @param ClassMetadata $targetEntity
-	 * @param string $targetTableAlias
-	 * @return string
+	 * Self-referencing
+	 * @var OneToOneEntity
+	 * @ORM\OneToOne
 	 */
-	public function getSql(DoctrineSqlFilter $sqlFilter, ClassMetadata $targetEntity, $targetTableAlias) {
-		return ' (1=1) ';
-	}
+	protected $selfReferencing;
+
+	/**
+	 * Bidirectional relation owning side
+	 * @var OneToOneEntity2
+	 * @ORM\OneToOne(inversedBy="bidirectionalRelation")
+	 */
+	protected $bidirectionalRelation;
+
+	/**
+	 * Unidirectional relation
+	 * @var OneToOneEntity2
+	 * @ORM\OneToOne
+	 */
+	protected $unidirectionalRelation;
+
 }

@@ -37,7 +37,8 @@ TYPO3\Flow\Tests\Functional\Object\Fixtures\SingletonClassC:
       value: TRUE
     protectedBooleanFalsePropertySetViaObjectsYaml:
       value: FALSE
-
+    protectedArrayPropertyWithSetterSetViaObjectsYaml:
+      value: {'and': 'something from Objects.yaml'}
   arguments:
     1:
       value: 'this is required'
@@ -78,3 +79,9 @@ TYPO3\Flow\Tests\Functional\Object\Fixtures\SingletonClassG:
         arguments:
           1:
             value: 'Constructor injection with factory'
+
+TYPO3\Flow\Tests\Functional\Object\Fixtures\Flow175\OuterPrototype:
+  arguments:
+    1:
+      object:
+        name: TYPO3\Flow\Tests\Functional\Object\Fixtures\Flow175\Greeter

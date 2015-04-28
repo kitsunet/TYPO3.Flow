@@ -910,4 +910,70 @@ class ContextTest extends UnitTestCase {
 		}
 		$this->assertFalse($securityContext->areAuthorizationChecksDisabled());
 	}
+
+	/**
+	 * @test
+	 */
+	public function withoutAuthorizationChecksReactivatesAuthorizationCheckCorrectlyWhenCalledNested() {
+		$securityContext = $this->getAccessibleMock('TYPO3\Flow\Security\Context', array('initialize'));
+		$self = $this;
+		$securityContext->withoutAuthorizationChecks(function() use ($securityContext, $self) {
+			$securityContext->withoutAuthorizationChecks(function() use ($securityContext, $self) {
+				$self->assertTrue($securityContext->areAuthorizationChecksDisabled());
+			});
+			$self->assertTrue($securityContext->areAuthorizationChecksDisabled());
+		});
+		$this->assertFalse($securityContext->areAuthorizationChecksDisabled());
+	}
+
+	/**
+	 * @test
+	 */
+	public function getContextHashReturnsStaticStringIfAuthorizationChecksAreDisabled() {
+		$self = $this;
+		$this->securityContext->withoutAuthorizationChecks(function() use ($self) {
+			$self->assertSame(Context::CONTEXT_HASH_UNINITIALIZED, $self->securityContext->getContextHash());
+		});
+	}
+
+	/**
+	 * @test
+	 */
+	public function getContextHashInitializesSecurityContext() {
+		/** @var Context|\PHPUnit_Framework_MockObject_MockObject $securityContext */
+		$securityContext = $this->getAccessibleMock('TYPO3\Flow\Security\Context', array('initialize', 'canBeInitialized', 'getRoles'));
+		$securityContext->expects($this->at(0))->method('canBeInitialized')->will($this->returnValue(TRUE));
+		$securityContext->expects($this->at(1))->method('initialize');
+		$securityContext->expects($this->any())->method('getRoles')->will($this->returnValue(array()));
+
+		$securityContext->getContextHash();
+	}
+
+	/**
+	 * @test
+	 */
+	public function getContextHashReturnsAHashOverAllAuthenticatedRoles() {
+		/** @var Context|\PHPUnit_Framework_MockObject_MockObject $securityContext */
+		$securityContext = $this->getAccessibleMock('TYPO3\Flow\Security\Context', array('isInitialized', 'getRoles'));
+		$securityContext->expects($this->any())->method('isInitialized')->will($this->returnValue(TRUE));
+
+		$mockRole1 = $this->getMockBuilder(Role::class)->disableOriginalConstructor()->getMock();
+		$mockRole2 = $this->getMockBuilder(Role::class)->disableOriginalConstructor()->getMock();
+		$mockRoles = ['Acme.Role1' => $mockRole1, 'Acme.Role2' => $mockRole2];
+		$securityContext->expects($this->atLeastOnce())->method('getRoles')->will($this->returnValue($mockRoles));
+
+		$expectedHash = md5(implode('|', array_keys($mockRoles)));
+		$this->assertSame($expectedHash, $securityContext->getContextHash());
+	}
+
+	/**
+	 * @test
+	 */
+	public function getContextHashReturnsStaticStringIfSecurityContextCantBeInitialized() {
+		/** @var Context|\PHPUnit_Framework_MockObject_MockObject $securityContext */
+		$securityContext = $this->getAccessibleMock('TYPO3\Flow\Security\Context', array('initialize', 'canBeInitialized'));
+		$securityContext->expects($this->atLeastOnce())->method('canBeInitialized')->will($this->returnValue(FALSE));
+		$securityContext->expects($this->never())->method('initialize');
+		$this->assertSame(Context::CONTEXT_HASH_UNINITIALIZED, $securityContext->getContextHash());
+	}
 }

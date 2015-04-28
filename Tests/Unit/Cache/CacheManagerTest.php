@@ -117,6 +117,22 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 	/**
 	 * @test
 	 */
+	public function isCachePersistentReturnsCorrectResult() {
+		$cache1 = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
+		$cache1->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('cache1'));
+		$this->cacheManager->registerCache($cache1);
+
+		$cache2 = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
+		$cache2->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('cache2'));
+		$this->cacheManager->registerCache($cache2, TRUE);
+
+		$this->assertFalse($this->cacheManager->isCachePersistent('cache1'));
+		$this->assertTrue($this->cacheManager->isCachePersistent('cache2'));
+	}
+
+	/**
+	 * @test
+	 */
 	public function flushCachesByTagCallsTheFlushByTagMethodOfAllRegisteredCaches() {
 		$cache1 = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
 		$cache1->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('cache1'));
@@ -124,8 +140,14 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 		$this->cacheManager->registerCache($cache1);
 
 		$cache2 = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
+		$cache2->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('cache2'));
 		$cache2->expects($this->once())->method('flushByTag')->with($this->equalTo('theTag'));
 		$this->cacheManager->registerCache($cache2);
+
+		$persistentCache = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
+		$persistentCache->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('persistentCache'));
+		$persistentCache->expects($this->never())->method('flushByTag')->with($this->equalTo('theTag'));
+		$this->cacheManager->registerCache($persistentCache, TRUE);
 
 		$this->cacheManager->flushCachesByTag('theTag');
 	}
@@ -140,8 +162,14 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 		$this->cacheManager->registerCache($cache1);
 
 		$cache2 = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
+		$cache2->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('cache2'));
 		$cache2->expects($this->once())->method('flush');
 		$this->cacheManager->registerCache($cache2);
+
+		$persistentCache = $this->getMockBuilder('TYPO3\Flow\Cache\Frontend\AbstractFrontend')->disableOriginalConstructor()->getMock();
+		$persistentCache->expects($this->atLeastOnce())->method('getIdentifier')->will($this->returnValue('persistentCache'));
+		$persistentCache->expects($this->never())->method('flush');
+		$this->cacheManager->registerCache($persistentCache, TRUE);
 
 		$this->cacheManager->flushCaches();
 	}
@@ -158,6 +186,18 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 	/**
 	 * @test
 	 */
+	public function flushConfigurationCachesByChangedFilesFlushesConfigurationCache() {
+		$this->registerCache('Flow_Object_Classes');
+		$this->registerCache('Flow_Object_Configuration');
+
+		$this->mockConfigurationManager->expects($this->once())->method('flushConfigurationCache');
+
+		$this->cacheManager->flushSystemCachesByChangedFiles('Flow_ConfigurationFiles', array());
+	}
+
+	/**
+	 * @test
+	 */
 	public function flushSystemCachesByChangedFilesWithChangedClassFileRemovesCacheEntryFromObjectClassesCache() {
 		$objectClassCache = $this->registerCache('Flow_Object_Classes');
 		$objectConfigurationCache = $this->registerCache('Flow_Object_Configuration');
@@ -167,7 +207,7 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 		$objectConfigurationCache->expects($this->once())->method('remove')->with('allCompiledCodeUpToDate');
 
 		$this->cacheManager->flushSystemCachesByChangedFiles('Flow_ClassFiles', array(
-			FLOW_PATH_PACKAGES . '/Framework/TYPO3.Flow/Classes/TYPO3/Flow/Cache/CacheManager.php' => ChangeDetectionStrategyInterface::STATUS_CHANGED
+			FLOW_PATH_PACKAGES . 'Framework/TYPO3.Flow/Classes/TYPO3/Flow/Cache/CacheManager.php' => ChangeDetectionStrategyInterface::STATUS_CHANGED
 		));
 	}
 
@@ -179,11 +219,11 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 		$objectConfigurationCache = $this->registerCache('Flow_Object_Configuration');
 		$this->registerCache('Flow_Reflection_Status');
 
-		$objectClassCache->expects($this->once())->method('remove')->with('TYPO3_Flow_Tests_Functional_Cache_CacheManagerTest');
+		$objectClassCache->expects($this->once())->method('remove')->with('TYPO3_Flow_Tests_Unit_Cache_CacheManagerTest');
 		$objectConfigurationCache->expects($this->once())->method('remove')->with('allCompiledCodeUpToDate');
 
 		$this->cacheManager->flushSystemCachesByChangedFiles('Flow_ClassFiles', array(
-			FLOW_PATH_PACKAGES . '/Framework/TYPO3.Flow/Tests/Functional/Cache/CacheManagerTest.php' => ChangeDetectionStrategyInterface::STATUS_CHANGED
+			__FILE__ => ChangeDetectionStrategyInterface::STATUS_CHANGED
 		));
 	}
 
@@ -210,6 +250,9 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 
 		$policyCache = $this->registerCache('Flow_Security_Authorization_Privilege_Method');
 		$policyCache->expects($this->once())->method('flush');
+
+		$aopExpressionCache = $this->registerCache('Flow_Aop_RuntimeExpressions');
+		$aopExpressionCache->expects($this->once())->method('flush');
 
 		$doctrineCache = $this->registerCache('Flow_Persistence_Doctrine');
 		$doctrineCache->expects($this->once())->method('flush');
@@ -278,17 +321,48 @@ class CacheManagerTest extends \TYPO3\Flow\Tests\UnitTestCase {
 	}
 
 	/**
-	 * @test
+	 * @return array
 	 */
-	public function flushSystemCachesByChangedFilesTriggersAopProxyClassRebuild() {
+	public function configurationFileChangesNeedAopProxyClassesRebuild() {
+		return array(
+			array('A/Different/Package/Configuration/Routes.yaml', FALSE),
+			array('A/Different/Package/Configuration/Views.yaml', FALSE),
+			array('A/Different/Package/Configuration/Objects.yaml', TRUE),
+			array('A/Different/Package/Configuration/Policy.yaml', TRUE),
+			array('A/Different/Package/Configuration/Settings.yaml', TRUE),
+			array('A/Different/Package/Configuration/Settings.Custom.yaml', TRUE),
+		);
+	}
+
+	/**
+	 * @test
+	 * @dataProvider configurationFileChangesNeedAopProxyClassesRebuild
+	 */
+	public function flushSystemCachesByChangedFilesTriggersAopProxyClassRebuildIfNeeded($changedFile, $needsAopProxyClassRebuild) {
+		$this->registerCache('Flow_Security_Authorization_Privilege_Method');
+		$this->registerCache('Flow_Mvc_Routing_Route');
+		$this->registerCache('Flow_Mvc_ViewConfigurations');
+		$this->registerCache('Flow_Persistence_Doctrine');
+		$this->registerCache('Flow_Persistence_Doctrine_Results');
+		$this->registerCache('Flow_Mvc_Routing_Resolve');
+		$this->registerCache('Flow_Aop_RuntimeExpressions');
+
 		$objectClassesCache = $this->registerCache('Flow_Object_Classes');
 		$objectConfigurationCache = $this->registerCache('Flow_Object_Configuration');
 
-		$objectClassesCache->expects($this->once())->method('flush');
-		$objectConfigurationCache->expects($this->at(0))->method('remove')->with('allAspectClassesUpToDate');
-		$objectConfigurationCache->expects($this->at(1))->method('remove')->with('allCompiledCodeUpToDate');
+		if ($needsAopProxyClassRebuild) {
+			$objectClassesCache->expects($this->once())->method('flush');
+			$objectConfigurationCache->expects($this->at(0))->method('remove')->with('allAspectClassesUpToDate');
+			$objectConfigurationCache->expects($this->at(1))->method('remove')->with('allCompiledCodeUpToDate');
+		} else {
+			$objectClassesCache->expects($this->never())->method('flush');
+			$objectConfigurationCache->expects($this->never())->method('remove')->with('allAspectClassesUpToDate');
+			$objectConfigurationCache->expects($this->never())->method('remove')->with('allCompiledCodeUpToDate');
+		}
 
-		$this->cacheManager->flushSystemCachesByChangedFiles('Flow_ConfigurationFiles', array());
+		$this->cacheManager->flushSystemCachesByChangedFiles('Flow_ConfigurationFiles', array(
+			$changedFile => ChangeDetectionStrategyInterface::STATUS_CHANGED
+		));
 	}
 
 	/**

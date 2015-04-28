@@ -48,7 +48,7 @@ abstract class Repository extends \Doctrine\ORM\EntityRepository implements \TYP
 	public function __construct(\Doctrine\Common\Persistence\ObjectManager $entityManager, \Doctrine\Common\Persistence\Mapping\ClassMetadata $classMetadata = NULL) {
 		if ($classMetadata === NULL) {
 			if (defined('static::ENTITY_CLASSNAME') === FALSE) {
-				$this->objectType = str_replace(array('\\Repository\\', 'Repository'), array('\\Model\\', ''), get_class($this));
+				$this->objectType = preg_replace(array('/\\\Repository\\\/', '/Repository$/'), array('\\Model\\', ''), get_class($this));
 			} else {
 				$this->objectType = static::ENTITY_CLASSNAME;
 			}
@@ -208,15 +208,15 @@ abstract class Repository extends \Doctrine\ORM\EntityRepository implements \TYP
 		$caseSensitive = isset($arguments[1]) ? (boolean)$arguments[1] : TRUE;
 		$cacheResult = isset($arguments[2]) ? (boolean)$arguments[2] : FALSE;
 
-		if (substr($method, 0, 6) === 'findBy' && strlen($method) > 7) {
-			$propertyName = lcfirst(substr($method, 6));
-			return $query->matching($query->equals($propertyName, $arguments[0], $caseSensitive))->execute($cacheResult);
-		} elseif (substr($method, 0, 7) === 'countBy' && strlen($method) > 8) {
-			$propertyName = lcfirst(substr($method, 7));
-			return $query->matching($query->equals($propertyName, $arguments[0], $caseSensitive))->count();
-		} elseif (substr($method, 0, 9) === 'findOneBy' && strlen($method) > 10) {
+		if (isset($method[10]) && strpos($method, 'findOneBy') === 0) {
 			$propertyName = lcfirst(substr($method, 9));
 			return $query->matching($query->equals($propertyName, $arguments[0], $caseSensitive))->execute($cacheResult)->getFirst();
+		} elseif (isset($method[8]) && strpos($method, 'countBy') === 0) {
+			$propertyName = lcfirst(substr($method, 7));
+			return $query->matching($query->equals($propertyName, $arguments[0], $caseSensitive))->count();
+		} elseif (isset($method[7]) && strpos($method, 'findBy') === 0) {
+			$propertyName = lcfirst(substr($method, 6));
+			return $query->matching($query->equals($propertyName, $arguments[0], $caseSensitive))->execute($cacheResult);
 		}
 
 		trigger_error('Call to undefined method ' . get_class($this) . '::' . $method, E_USER_ERROR);

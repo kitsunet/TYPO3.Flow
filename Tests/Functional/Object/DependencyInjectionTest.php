@@ -12,6 +12,7 @@ namespace TYPO3\Flow\Tests\Functional\Object;
  *                                                                        */
 
 use TYPO3\Flow\Configuration\ConfigurationManager;
+use TYPO3\Flow\Tests\Functional\Object\Fixtures\Flow175\ClassWithTransitivePrototypeDependency;
 use TYPO3\Flow\Tests\FunctionalTestCase;
 
 /**
@@ -64,6 +65,16 @@ class DependencyInjectionTest extends FunctionalTestCase {
 		$this->assertSame(array('iAm' => array('aConfigured' => 'arrayValue')), $objectC->getProtectedArrayPropertySetViaObjectsYaml());
 		$this->assertTrue($objectC->getProtectedBooleanTruePropertySetViaObjectsYaml());
 		$this->assertFalse($objectC->getProtectedBooleanFalsePropertySetViaObjectsYaml());
+	}
+
+	/**
+	 * @test
+	 */
+	public function ifItExistsASetterIsUsedToInjectPrimitiveTypePropertiesFromConfiguration() {
+		$objectC = $this->objectManager->get('TYPO3\Flow\Tests\Functional\Object\Fixtures\SingletonClassC');
+
+		// Note: The argument is defined in the Objects.yaml of the Flow package (testing context)
+		$this->assertSame(array('has' => 'some default value', 'and' => 'something from Objects.yaml'), $objectC->getProtectedArrayPropertyWithSetterSetViaObjectsYaml());
 	}
 
 	/**
@@ -261,6 +272,22 @@ class DependencyInjectionTest extends FunctionalTestCase {
 	public function injectionViaInjectAnnotation() {
 		$classWithInjectedConfiguration = new Fixtures\ClassWithInjectedConfiguration();
 		$this->assertSame('injected setting', $classWithInjectedConfiguration->getLegacySetting());
+	}
+
+	/**
+	 * This test verifies the behaviour described in FLOW-175.
+	 *
+	 * Please note that this issue occurs ONLY when creating an object
+	 * with a dependency that itself takes an prototype-scoped object as
+	 * constructor argument and that dependency was explicitly configured
+	 * in the package's Objects.yaml.
+	 *
+	 * @test
+	 * @see https://jira.typo3.org/browse/FLOW-175
+	 */
+	public function transitivePrototypeDependenciesWithExplicitObjectConfigurationAreConstructedCorrectly() {
+		$classWithTransitivePrototypeDependency = new ClassWithTransitivePrototypeDependency();
+		$this->assertEquals('Hello World!', $classWithTransitivePrototypeDependency->getTestValue());
 	}
 
 }
